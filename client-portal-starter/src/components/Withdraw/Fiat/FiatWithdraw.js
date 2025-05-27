@@ -1,0 +1,687 @@
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  Button,
+  Col,
+  Input,
+  InputGroup,
+  InputGroupText,
+  Label,
+  Row,
+} from "reactstrap";
+import { fetchBankAccounts, toggleCurrentModal } from "../../../store/actions";
+import CardWrapper from "../../Common/CardWrapper";
+import CustomModal from "../../Common/CustomModal";
+import { addWithdraw } from "../../../apis/withdraw";
+import { Link } from "react-router-dom";
+import AddBankAccountModal from "../../BankAccounts/AddBankAccountModal";
+import  BigNumber  from "bignumber.js";
+import WalletsListSelect from "components/Common/WalletsListSelect";
+import { withTranslation } from "react-i18next";
+
+function FiatWithdraw({ isOpen, toggleOpen, ...props }) {
+  const [activeStep, setActiveStep] = useState(0);
+  // const [wallets, setWallets] = useState([]);
+  const wallets = useSelector((state) => state.wallets?.wallets);
+  const bankAccounts = useSelector(
+    (state) => state.bankAccounts?.bankAccounts?.docs
+  );
+  const transActionfee = useSelector(
+    (state) => state.Profile?.clientData?.transactionFeeId
+  );
+  const [walletId, setWalletId] = useState("");
+  const [bankAccountId, setBankAccounttId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [gateway, setGateway] = useState("");
+  // const [note, setNote] = useState("");
+  const [result, setResult] = useState("");
+  const [bankAccountDetile, setBankAccountDetile] = useState({});
+  const [wireTransferFlag, setWireTransferFlag] = useState(false);
+  const [asset, setAsset] = useState("");
+  const [transactionFee, setTransactionFee] = useState("");
+
+  const [addBankModal, setAddBankModal] = useState(false);
+  const [selectCurrancyError, setSelectCurrancyError] = useState(false);
+  const [selectBankError, setSelectBankError] = useState(false);
+  const [selectGatwayError, setSelectGatwayError] = useState(false);
+  const [amountError, setAmountError] = useState(false);
+  useEffect(() => {
+    if (isOpen) {
+      setActiveStep(0);
+      setWalletId("");
+      setGateway("");
+      setAmount("");
+      setBankAccounttId("");
+      setBankAccountDetile({}); 
+    }
+    dispatch(
+      fetchBankAccounts({
+        limit: 100,
+        page: 1,
+      })
+    );
+  }, [isOpen]);
+  useEffect(() => {
+    if (bankAccountId != "") {
+      const detile = bankAccounts.find(o => o._id === bankAccountId); 
+      if (detile) {
+        setBankAccountDetile(detile);
+      }
+    }
+  }, [bankAccountId]);
+  const dispatch = useDispatch();
+  function toggleTab(tab) {
+    if (activeStep !== tab) {
+      setActiveStep(tab);
+    }
+  }
+
+  const handleSubmit = ( ) => {
+    // event.preventDefault();
+    addWithdraw({
+      gateway: gateway,
+      walletId: walletId,
+      amount: amount,
+      note: "note",
+    })
+      .then((e) => {
+        // console.log(e);
+        setResult(e);
+        toggleTab(2);
+      })
+      .catch((e) => {
+        // console.log(e);
+        setResult(e);
+        toggleTab(2);
+      });
+    // toggleOpen()
+  };
+  const validateStep1 = () => {
+    if (walletId == "") {
+      setSelectCurrancyError(true);
+      setTimeout(() => {
+        setSelectCurrancyError(false);
+      }, 2000);
+    }
+    if (gateway == "WIRE_TRANSFER") {
+      if (bankAccountId == "") {
+        setSelectBankError(true);
+        setTimeout(() => {
+          setSelectBankError(false);
+        }, 2000);
+      }
+    }
+
+    if (gateway == "") {
+      setSelectGatwayError(true);
+      setTimeout(() => {
+        setSelectGatwayError(false);
+      }, 2000);
+    }
+    if (walletId != "" && gateway != "") {
+      if (gateway == "WIRE_TRANSFER") {
+        if (bankAccountId != "") {
+          toggleTab(1);
+        }
+      }
+      else {
+        toggleTab(1);
+      }
+    }
+  
+  };
+  const validateStep2 = () => {
+    if (amount == "") {
+      setAmountError(true);
+      setTimeout(() => {
+        setAmountError(false);
+      }, 2000);
+    } else {
+      handleSubmit();
+    }
+  };
+  useEffect(() => { 
+    const data = getTransactionFeeForAssetFromData(transActionfee, asset);
+    if (amount != 0 && amount != "") {
+      const value = calculateTransactionFeeAmount(
+        {
+          value: data?.value?.$numberDecimal || data?.value,
+          isPercentage: data?.isPercentage,
+          minValue: data?.minValue,
+          maxValue: data?.maxValue?.$numberDecimal || data?.maxValue
+        },
+        amount
+      );
+      setTransactionFee((value?.c) ? value?.c[0] : "0");
+    } else if (amount == 0) {
+      setTransactionFee("0");
+    }
+
+  }, [amount]);
+  const getTransactionFeeForAssetFromData = (feeData = {}, asset = null) => {
+    let data = feeData;
+    if (!asset || !feeData || !feeData.assets || !feeData.assets[asset]) {
+      data = {
+        _id: (feeData && feeData._id) || null,
+        value: (feeData && feeData.value) || 0,
+        isPercentage: (feeData && feeData.isPercentage) || false,
+        minValue: (feeData && feeData.minValue) || 0,
+        maxValue: (feeData && feeData.maxValue) || 0,
+      };
+    } else {
+      data = {
+        _id: (feeData && feeData._id) || null,
+        value:
+          (feeData && feeData.assets[asset] && feeData.assets[asset].value) ||
+          0,
+        isPercentage: (feeData && feeData.isPercentage) || false,
+        minValue:
+          (feeData &&
+            feeData.assets[asset] &&
+            feeData.assets[asset].minValue) ||
+          0,
+        maxValue:
+          (feeData &&
+            feeData.assets[asset] &&
+            feeData.assets[asset].maxValue) ||
+          0,
+      };
+    }
+    return data;
+  };
+
+  const calculateTransactionFeeAmount = (feeDetails, amount) => {
+    let { value, isPercentage, minValue, maxValue } = feeDetails;
+    let fee = new BigNumber(0);
+    value = new BigNumber(value);
+    minValue = new BigNumber(minValue);
+    maxValue = new BigNumber(maxValue);
+    amount = new BigNumber(amount);
+    if (isPercentage) {
+      fee = fee.plus(amount.multipliedBy(value.dividedBy(100)));
+      if (fee.isLessThan(minValue)) {
+        fee = minValue;
+      } else if (fee.isGreaterThan(maxValue)) {
+        fee = maxValue;
+      }
+    } else {
+      fee = fee.plus(value);
+    }
+    return fee;
+  };
+  const steps = [
+    {
+      header: "Select Method",
+      content: (
+        <>
+          <div className="mb-4">
+            <Button
+              className="btn btn-danger waves-effect waves-light w-lg m-2 px-4"
+              onClick={() => {
+                dispatch(toggleCurrentModal("fiatWithdraw"));
+              }}
+            >
+              {props.t("Withdraw Fiat")} <i className="mdi mdi-arrow-right"></i>
+            </Button>
+            <Button
+              className="btn btn-danger waves-effect waves-light w-lg m-2 px-4"
+              onClick={() => {
+                dispatch(toggleCurrentModal("cryptoWithdraw"));
+              }}
+            >
+              {props.t("Withdraw Crypto")} <i className="mdi mdi-arrow-right"></i>
+            </Button>
+          </div>
+          <div className="mb-3">
+            <InputGroup>
+              <InputGroupText className="custom-input-group-text">
+                {props.t("Available Balance")} 
+              </InputGroupText>
+              <Input
+                className="form-control border-start-0 text-end"
+                type="text"
+                placeholder="100.41564897465132 USDT"
+                disabled
+              />
+            </InputGroup>
+          </div>
+          <div className="mb-3">
+            <Label className="form-label mb-3">{props.t("Select wallet")}</Label>
+            <WalletsListSelect
+              onChange={(e) => {
+                // console.log(e.value?._id);
+                setWalletId(e.value?._id);
+                setAsset(e.value?.asset);
+              }}
+              wllates={wallets.filter(x => !x.isCrypto)}
+            >
+            </WalletsListSelect>
+            {selectCurrancyError && (
+              <p className="small text-danger "> {props.t("Please Select Currency")}</p>
+            )} 
+          </div>  
+          <div className="mb-3">
+            <h6 className="mb-3">
+              {props.t("Select Payment Method")}
+              {selectGatwayError && (
+                <p className="small text-danger ">
+                  {props.t("Please Select Payment Method")}
+                </p>
+              )}
+            </h6>
+            <Row className="justify-content-center justify-content-lg-between payment-methods">
+              <Col xs={4} lg={2} className="my-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGateway("VISA");
+                    setWireTransferFlag(false);
+                  }}
+                  className="btn btn-light waves-effect waves-light w-sm py-4"
+                >
+                  <img
+                    src="img/payment-method/visa.png"
+                    width="100%"
+                    height="100%"
+                    alt=""
+                  ></img>
+                </button>
+              </Col>
+              <Col xs={4} lg={2} className="my-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGateway("MASTERCARD");
+                    setWireTransferFlag(false);
+                  }}
+                  className="btn btn-light waves-effect waves-light w-sm py-4"
+                >
+                  <img
+                    src="img/payment-method/mastercard-1.png"
+                    width="100%"
+                    height="100%"
+                    alt=""
+                  ></img>
+                </button>
+              </Col>
+              <Col xs={4} lg={2} className="my-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGateway("NETELLER");
+                    setWireTransferFlag(false);
+                  }}
+                  className="btn btn-light waves-effect waves-light w-sm py-4"
+                >
+                  <img
+                    src="img/payment-method/neteller.png"
+                    width="100%"
+                    height="100%"
+                    alt=""
+                  ></img>
+                </button>
+              </Col>
+              <Col xs={4} lg={2} className="my-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGateway("SKRILL");
+                    setWireTransferFlag(false);
+                  }}
+                  className="btn btn-light waves-effect waves-light w-sm py-4"
+                >
+                  <img
+                    src="img/payment-method/skrill.png"
+                    width="100%"
+                    height="100%"
+                    alt=""
+                  ></img>
+                </button>
+              </Col>
+              <Col xs={4} lg={2} className="my-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGateway("WIRE_TRANSFER");
+                    setWireTransferFlag(true);
+                  }}
+                  className="btn btn-light waves-effect waves-light w-sm py-4"
+                >
+                  <img
+                    src="img/payment-method/wire-transfer.png"
+                    width="100%"
+                    height="100%"
+                    alt=""
+                  ></img>
+                </button>
+              </Col>
+            </Row>
+          </div>
+          {gateway == "WIRE_TRANSFER" ? (
+            <div className="mb-3">
+              <Label>{props.t("Select Bank Account")}</Label>
+              <InputGroup>
+                <select
+                  className="form-select"
+                  onChange={(e) => {
+                    setBankAccounttId(e.target.value);
+                  }}
+                >
+                  <option value="">select</option>
+                  {bankAccounts?.map((bankAccount) => {
+                    return (
+                      <option key={bankAccount._id} value={bankAccount._id}>
+                        {bankAccount.bankName}
+                      </option>
+                    );
+                  })}
+                </select>
+                <InputGroupText className="custom-input-group-text">
+                  <Link
+                    to="#"
+                    onClick={() => {
+                      // console.log("Add New");
+                      setAddBankModal(true);
+                    }}
+                  >
+                    {props.t("Add New")}
+                  </Link>
+                </InputGroupText>
+              </InputGroup>
+              {selectBankError && (
+                <p className="small text-danger "> 
+                  {props.t("Please Select Bank Account")} 
+                </p>
+              )}
+            </div>
+          ) : (
+            ""
+          )}
+
+          {(wireTransferFlag && Object.keys(bankAccountDetile).length) ? (
+            <>
+              <h5 className="mb-4">{props.t("Payment details")}</h5>
+              <Label className="mb-2">{props.t("Bank Account")}</Label>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">{bankAccountDetile?.accountHolderName}</InputGroupText>
+                  {/* <Input className="form-control " type="text" placeholder="Andrew" /> */}
+                </InputGroup>
+              </div>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">{bankAccountDetile?.bankName}</InputGroupText>
+                  {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="Andrew" /> */}
+                </InputGroup>
+              </div>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">
+                    {bankAccountDetile?.accountNumber}
+                  </InputGroupText>
+                  {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="54842222222221" /> */}
+                </InputGroup>
+              </div>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">
+                    {bankAccountDetile?.address}
+                  </InputGroupText>
+                  {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="079 Dariana Knoll, CA" /> */}
+                </InputGroup>
+              </div>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">{bankAccountDetile?.swiftCode}</InputGroupText>
+                  {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="UI8" /> */}
+                </InputGroup>
+              </div>
+              <div className="mb-3">
+                <InputGroup>
+                  <InputGroupText className="w-100">
+                    {bankAccountDetile?.currency}
+                  </InputGroupText>
+                  {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="55416 Powlowski Spring, CA" /> */}
+                </InputGroup>
+              </div>
+              <p className="mb-2">{props.t("Bank Account")}</p>
+              <p className="text-muted">
+                {props.t("You MUST include the Reference Code in your deposit in order to credit your account!")}
+              </p>
+            </>
+          ) : gateway == "SKRILL" ||
+            gateway == "NETELLER" ||
+            gateway == "MASTERCARD" ? (
+              <>
+                <p className="text-muted">{props.t("Enter card information.")}</p>
+                <Row>
+                  <Col xs={12}>
+                    <div className="mb-3">
+                      <Label
+                        htmlFor="example-date-input"
+                        className="form-label"
+                      >
+                        {props.t("Name")}
+                      </Label>
+                      <Input
+                        className="form-control"
+                        type="text"
+                        id="example-date-input"
+                      />
+                    </div>
+                  </Col>
+                  <Col xs={12}>
+                    <div className="mb-3">
+                      <Label
+                        htmlFor="example-date-input"
+                        className="form-label"
+                      >
+                        {props.t("Card Number")}
+                      </Label>
+                      <Input
+                        className="form-control"
+                        type="text"
+                        id="example-date-input"
+                      />
+                    </div>
+                  </Col>
+                  <Col md={6}>
+                    <div className="mb-3">
+                      <Label
+                        htmlFor="example-date-input"
+                        className="form-label"
+                      >
+                        {props.t("Expiry date")}
+                      </Label>
+                      <Input
+                        className="form-control"
+                        type="date"
+                        id="example-date-input"
+                      />
+                    </div>
+                  </Col>
+                  <Col md={6}>
+                    <div className="mb-3">
+                      <Label
+                        htmlFor="example-date-input"
+                        className="form-label"
+                      >
+                        {props.t("Security Code (CVV)")}
+                      </Label>
+                      <Input
+                        className="form-control"
+                        type="text"
+                        id="example-date-input"
+                      />
+                    </div>
+                  </Col>
+                </Row>
+              </>
+            ) : (
+              ""
+            )}         
+          <div className="text-center mt-4">
+            <Button
+              className="btn btn-danger waves-effect waves-light w-lg btn-sm"
+              onClick={() => validateStep1()}
+            >
+              {props.t("Continue")}
+            </Button>
+          </div>
+        </>
+      ),
+    },
+    {
+      header: "Enter Amount",
+      content: (
+        <>
+          {/* <div className="mt-4 mb-3">
+                <InputGroup>
+                    <InputGroupText className="custom-input-group-text">
+                        Available Balance
+                    </InputGroupText>
+                    <Input className="form-control border-start-0 text-end" type="text" placeholder="100.41564897465132 USDT" />
+                </InputGroup>
+            </div> */}
+          {/* <div className="mb-3">
+            <Label className="form-label mb-2">Address</Label>
+            <Input
+              className="form-control"
+              type="text"
+              placeholder="100.41564897465132 USDT"
+            />
+            <span className="text-muted" style={{ fontSize: "10px" }}>
+              Do not send Tether USD unless you are certain the destination
+              supports TRC-20 transactions. If it does not, you could
+              permanently lose access to your coins
+            </span>
+          </div> */}
+          {/* <div className="text-center mb-4">You receive:</div> */}
+          <div className="mb-3">
+            <Label className="form-label mb-2">{props.t("Transaction Fee")}</Label>
+            <InputGroup className="">
+              <InputGroupText className=" w-100">
+                {transactionFee}{"   "}{asset}
+              </InputGroupText>
+              {/* <Input className="form-control border-start-0 text-end" type="text" placeholder="0.00 EUR" /> */}
+            </InputGroup>
+          </div>
+          <div className="mb-3">
+            <Label className="form-label mb-2">{props.t("Total Amount")}</Label>
+            <Input
+              onChange={(e) => {
+                setAmount(e.target.value);
+              }}
+              className="form-control "
+              type="number"
+              placeholder="0.00 USDT"
+            />
+            {amountError && (
+              <p className="small text-danger "> {props.t("Please Inter Amount")}</p>
+            )}
+          </div>
+          <div className="text-center">
+            <Button
+              className="btn btn-secondary m-2 btn-sm w-lg"
+              onClick={() => toggleTab(0)}
+            >
+              {props.t("Previous")}
+            </Button>
+            <Button
+              className="btn btn-danger m-2 btn-sm w-lg"
+              onClick={() => validateStep2()}
+            >
+              {props.t("Continue")}
+            </Button>
+          </div>
+        </>
+      ),
+    },
+    {
+      header: "Withdraw status",
+      content: (
+        <>
+          <>
+            {result.status ? (
+              <>
+                <div className="text-center  mb-4">
+                  <h1 className="fs-1 mb-5">
+                    {props.t("Yay!")} <i className="bx bx-wink-smile"></i>
+                  </h1>
+                  <p>{props.t("Your successfully a withdrawal")}</p>
+                  <p>
+                    <span className="positive">100.00 USD</span> {props.t("from Bitcloud")}
+                  </p>
+                </div>
+                <CardWrapper className="mb-4">
+                  <div className="d-flex align-items-center justify-content-between px-5">
+                    <div>
+                      <div className="text-muted">{props.t("Status")}</div>
+                      <div className="positive">{props.t("Completed")}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted">{props.t("Transaction ID")}</div>
+                      <div>0msdsdsds.....787r639</div>
+                    </div>
+                  </div>
+                </CardWrapper>
+                <CardWrapper className="mb-5">
+                  <div className="px-5">
+                    <div className="text-muted">{props.t("Address")}</div>
+                    <div>0asdasdasdasd0sad012312312312....4879465asdasd</div>
+                  </div>
+                </CardWrapper>
+              </>
+            ) : (
+              <>
+                <div className="text-center  mb-4">
+                  <h1 className="fs-1 mb-5">
+                    {props.t("Oops!")} <i className="bx sad"></i>
+                  </h1>
+                  <p>{props.t("Your Withdrawal Request Not Successfully Created")}</p>
+                </div>
+                <CardWrapper className="mb-4">
+                  <div className="d-flex align-items-center justify-content-between px-5">
+                    <div>
+                      <div className="positive">{result.message}</div>
+                    </div>
+                  </div>
+                </CardWrapper>
+              </>
+            )}
+          </>
+          <div className="text-center">
+            <Button
+              className="btn btn-danger m-2 btn-sm w-lg"
+              onClick={toggleOpen}
+            >
+              {props.t("Continue")}
+            </Button>
+          </div>
+          {/* <div className="text-center">
+                <Button className="btn btn-danger m-2 btn-sm w-lg" onClick={handleSubmit}>View Wallet</Button>
+            </div> */}
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <CustomModal
+        steps={steps}
+        isOpen={isOpen}
+        toggleOpen={toggleOpen}
+        activeStep={activeStep}
+        toggleTab={toggleTab}
+      ></CustomModal>
+      <AddBankAccountModal
+        isOpen={addBankModal}
+        toggleOpen={() => {
+          setAddBankModal(false);
+        }}
+      ></AddBankAccountModal>
+    </>
+  );
+}
+export default withTranslation()(FiatWithdraw); 
