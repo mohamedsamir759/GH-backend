@@ -30,6 +30,10 @@ jobs:
         continue-on-error: false
         id: run-tests
 
+      - name: Check react-scripts installed
+        run: npx react-scripts --version
+        working-directory: client-portal-starter
+
       - name: Build the React app
         run: npm run build
         working-directory: client-portal-starter
