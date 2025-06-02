@@ -1,4 +1,4 @@
-iname: Node.js Pipeline
+name: Node.js Pipeline
 
 on:
   push:
@@ -23,6 +23,12 @@ jobs:
         working-directory: backend-api
         continue-on-error: false
         id: install-dependencies
+
+      - name: Run build
+        run: npm run build
+        working-directory: backend-api
+        continue-on-error: false
+        id: run-build
 
       - name: Run ESLint
         run: npm run lint
